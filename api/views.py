@@ -118,8 +118,9 @@ class AuthModeradorView(APIView):
 
 class CentroListView(APIView):
     def get(self, request):
-        query = {}
-        for field in ('estado', 'municipio', 'estado_verificacion'):
+        # El directorio público nunca muestra centros ocultos (ADR 0004)
+        query = {'estado_verificacion': {'$ne': 'oculto'}}
+        for field in ('estado', 'municipio'):
             value = request.query_params.get(field)
             if value:
                 query[field] = value

@@ -7,6 +7,7 @@ NECESIDADES = 'necesidades'
 MOVIMIENTOS = 'movimientos'
 CODIGOS_GESTION = 'codigos_gestion'
 MODERADORES = 'moderadores'
+REPORTES = 'reportes'
 
 # Valores controlados
 ESTADOS_VERIFICACION = ('sin_verificar', 'verificado', 'oculto')
@@ -50,3 +51,7 @@ def ensure_indexes():
 
     # Moderadores — cuentas reales
     db[MODERADORES].create_index('email', unique=True)
+
+    # Reportes ciudadanos
+    db[REPORTES].create_index('centro_id')
+    db[REPORTES].create_index('resuelto')
