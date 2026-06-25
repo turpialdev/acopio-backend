@@ -42,6 +42,7 @@ def ensure_indexes():
     db[MOVIMIENTOS].create_index([('centro_id', 1), ('registrado_en', -1)])
     db[MOVIMIENTOS].create_index('categoria_id')
     db[MOVIMIENTOS].create_index('tipo')
+    db[MOVIMIENTOS].create_index('codigo_id')
 
     # Códigos de gestión — se guarda el hash, nunca el texto plano (ADR 0002)
     db[CODIGOS_GESTION].create_index('valor_hash', unique=True)

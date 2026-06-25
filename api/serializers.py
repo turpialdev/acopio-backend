@@ -101,7 +101,7 @@ class MovimientoSerializer(serializers.Serializer):
     unidad = _optional_text(50)
     contraparte = _optional_text(200)
     nota = _optional_text(500)
-    registrado_por = _optional_text(200)
+    registrado_por = serializers.CharField(read_only=True)
     registrado_en = serializers.DateTimeField(read_only=True)
 
     def validate_centro_id(self, value):

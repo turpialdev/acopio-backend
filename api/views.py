@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from django.contrib.auth.hashers import check_password, make_password
@@ -12,6 +12,8 @@ from acopio.db import get_db
 from api.auth import (
     buscar_codigo_activo,
     crear_codigo_raiz,
+    require_codigo,
+    require_responsable,
     token_codigo,
     token_moderador,
 )
@@ -52,6 +54,16 @@ def _parse_oid(value):
         return ObjectId(value)
     except Exception:
         return None
+
+
+_VENTANA_EDICION_MINUTOS = 30
+
+
+def _check_doc_centro(request, doc):
+    """403 si el JWT no pertenece al mismo centro que el documento."""
+    if request.auth_payload.get('centro_id') != str(doc['centro_id']):
+        return Response({'detail': 'No tienes acceso a este centro.'}, status=403)
+    return None
 
 
 @api_view(['GET'])
@@ -279,14 +291,11 @@ class NecesidadDetailView(APIView):
 # ---- movimientos (inventario: libro de entradas/salidas) ----
 
 class MovimientoListView(APIView):
+    @require_codigo
     def get(self, request):
-        query = {}
-        centro_id = request.query_params.get('centro_id')
-        if centro_id:
-            oid = _parse_oid(centro_id)
-            if oid is None:
-                return Response({'detail': 'centro_id inválido.'}, status=400)
-            query['centro_id'] = oid
+        # Siempre filtra por el centro del JWT — un voluntario no puede ver otros centros (V4)
+        centro_oid = _parse_oid(request.auth_payload['centro_id'])
+        query = {'centro_id': centro_oid}
         tipo = request.query_params.get('tipo')
         if tipo:
             query['tipo'] = tipo
@@ -294,10 +303,17 @@ class MovimientoListView(APIView):
         docs = [format_doc(d) for d in cursor]
         return Response(MovimientoSerializer(docs, many=True).data)
 
+    @require_codigo
     def post(self, request):
-        serializer = MovimientoSerializer(data=request.data)
+        # centro_id viene del JWT, no del cuerpo (V2: voluntario registra en su centro)
+        payload = request.auth_payload
+        data = {k: v for k, v in request.data.items() if k != 'centro_id'}
+        data['centro_id'] = payload['centro_id']
+        serializer = MovimientoSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         doc = dict(serializer.validated_data)
+        doc['registrado_por'] = payload.get('etiqueta') or ''
+        doc['codigo_id'] = ObjectId(payload['codigo_id'])
         doc['registrado_en'] = _now()
         result = get_db()[MOVIMIENTOS].insert_one(doc)
         created = format_doc(get_db()[MOVIMIENTOS].find_one({'_id': result.inserted_id}))
@@ -305,21 +321,39 @@ class MovimientoListView(APIView):
 
 
 class MovimientoDetailView(APIView):
+    @require_codigo
     def get(self, request, pk):
         doc, err = _get_doc(MOVIMIENTOS, pk)
         if err:
             return err
+        err = _check_doc_centro(request, doc)
+        if err:
+            return err
         return Response(MovimientoSerializer(format_doc(doc)).data)
 
+    @require_codigo
     def patch(self, request, pk):
         doc, err = _get_doc(MOVIMIENTOS, pk)
         if err:
             return err
+        err = _check_doc_centro(request, doc)
+        if err:
+            return err
+        payload = request.auth_payload
+        if payload.get('rol') == 'voluntario':
+            codigo_oid = _parse_oid(payload.get('codigo_id', ''))
+            if doc.get('codigo_id') != codigo_oid:
+                return Response(
+                    {'detail': 'Solo puedes corregir tus propios registros.'}, status=403
+                )
+            ventana = _now() - timedelta(minutes=_VENTANA_EDICION_MINUTOS)
+            if doc['registrado_en'].replace(tzinfo=timezone.utc) < ventana:
+                return Response(
+                    {'detail': f'Solo puedes corregir registros de los últimos {_VENTANA_EDICION_MINUTOS} minutos.'},
+                    status=403,
+                )
         # centro_id y categoria_id son inmutables tras el registro
-        data = {
-            k: v for k, v in request.data.items()
-            if k not in ('centro_id', 'categoria_id')
-        }
+        data = {k: v for k, v in request.data.items() if k not in ('centro_id', 'categoria_id')}
         serializer = MovimientoSerializer(data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         get_db()[MOVIMIENTOS].update_one(
@@ -328,8 +362,12 @@ class MovimientoDetailView(APIView):
         updated = format_doc(get_db()[MOVIMIENTOS].find_one({'_id': doc['_id']}))
         return Response(MovimientoSerializer(updated).data)
 
+    @require_responsable
     def delete(self, request, pk):
         doc, err = _get_doc(MOVIMIENTOS, pk)
+        if err:
+            return err
+        err = _check_doc_centro(request, doc)
         if err:
             return err
         get_db()[MOVIMIENTOS].delete_one({'_id': doc['_id']})
