@@ -1,0 +1,598 @@
+{
+  "info": {
+    "name": "Acopio Venezuela",
+    "description": "API de coordinación de ayuda humanitaria. Ver claude_context/ENDPOINTS.md para el contrato completo.\n\n**Variables de colección:**\n- `base_url` — URL base (default: http://localhost:8000)\n- `token` — JWT de código de gestión (se setea automáticamente al canjear un código)\n- `token_mod` — JWT de moderador (se setea automáticamente al hacer login)\n- `centro_id` — ID del centro activo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" },
+    { "key": "token_mod", "value": "" },
+    { "key": "centro_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/health/",
+            "description": "Verifica que el servicio está corriendo."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Directorio público",
+      "description": "Sin auth. Solo centros no ocultos.",
+      "item": [
+        {
+          "name": "Listar centros",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/centros/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "centros", ""],
+              "query": [
+                { "key": "q", "value": "", "description": "Búsqueda por nombre", "disabled": true },
+                { "key": "estado", "value": "Miranda", "description": "Entidad federal", "disabled": true },
+                { "key": "municipio", "value": "", "disabled": true },
+                { "key": "categoria", "value": "", "description": "ID de categoría del catálogo", "disabled": true },
+                { "key": "urgencia", "value": "urgente", "description": "urgente | media | leve", "disabled": true }
+              ]
+            },
+            "description": "P1 — Lista centros con filtros opcionales. No incluye centros ocultos."
+          }
+        },
+        {
+          "name": "Ver ficha de centro",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/centros/{{centro_id}}/",
+            "description": "P2 — Ficha pública de un centro: nombre, dirección, necesidades, urgencia, verificación, última actualización."
+          }
+        },
+        {
+          "name": "Reportar centro",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/centros/{{centro_id}}/reportar/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"duplicado\",\n  \"detalle\": \"Ya existe el mismo centro registrado como Colegio San José\"\n}"
+            },
+            "description": "P4 — Reporte ciudadano. Va a cola de moderación; no oculta el centro automáticamente.\n\n⚠️ Endpoint pendiente de implementar."
+          }
+        },
+        {
+          "name": "Catálogo de categorías",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/catalogo/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalogo", ""],
+              "query": [
+                { "key": "es_insumo", "value": "true", "description": "Filtrar solo insumos (bienes)", "disabled": true },
+                { "key": "activa", "value": "true", "disabled": true }
+              ]
+            },
+            "description": "Categorías activas para alimentar los filtros del Directorio y el formulario de necesidades."
+          }
+        },
+        {
+          "name": "Contactos de emergencia",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/contactos-emergencia/",
+            "description": "P5 — (Deseable) Contactos curados por el moderador: bomberos, hospitales, protección civil.\n\n⚠️ Endpoint pendiente de implementar."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alta de centro",
+      "description": "Sin auth. Baja fricción — el centro nace sin_verificar pero visible.",
+      "item": [
+        {
+          "name": "Registrar centro",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('centro_id', body.id);",
+                  "    pm.collectionVariables.set('codigo_raiz', body.codigo_raiz);",
+                  "    console.log('Guarda este código raíz (no se repite):', body.codigo_raiz);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/centros/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Centro de Acopio Chacao\",\n  \"estado\": \"Miranda\",\n  \"municipio\": \"Chacao\",\n  \"direccion\": \"Av. Francisco de Miranda, frente al CCCT\",\n  \"contacto\": \"+58 414 1234567\",\n  \"ubicacion_url\": \"https://maps.google.com/?q=...\",\n  \"vialidad\": \"Transitable\",\n  \"nombre_responsable\": \"María García\",\n  \"telefono_responsable\": \"+58 414 9876543\",\n  \"cargo_responsable\": \"directora\"\n}"
+            },
+            "description": "R1 — Crea el centro y devuelve el código raíz en `codigo_raiz`. El código se muestra **una sola vez** — el script de Tests lo captura en la variable `codigo_raiz`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Obtención de JWT. El token se guarda automáticamente en la variable de colección.",
+      "item": [
+        {
+          "name": "Canjear código de gestión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('token', body.token);",
+                  "    pm.collectionVariables.set('centro_id', body.centro_id);",
+                  "    console.log('Token seteado. Rol:', body.rol, '| Centro:', body.centro_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/codigo/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"pega-aqui-el-codigo-de-gestion\"\n}"
+            },
+            "description": "R2, V1 — Canjea el código de gestión por un JWT. El token se guarda automáticamente en `{{token}}`."
+          }
+        },
+        {
+          "name": "Login moderador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token_mod', pm.response.json().token);",
+                  "    console.log('Token de moderador seteado.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/moderador/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"moderador@acopio.ve\",\n  \"password\": \"contraseña\"\n}"
+            },
+            "description": "Login de moderador. El token se guarda en `{{token_mod}}`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Panel de gestión",
+      "description": "Requiere `Authorization: Bearer {{token}}` (JWT de código de gestión).",
+      "item": [
+        {
+          "name": "Ficha",
+          "item": [
+            {
+              "name": "Ver ficha propia",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/ficha/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "Ver la ficha con campos internos del responsable (no expuestos en el Directorio).\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Editar ficha",
+              "request": {
+                "method": "PATCH",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/ficha/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vialidad\": \"Transitable con precaución\",\n  \"contacto\": \"+58 414 1234567\",\n  \"necesidades\": [\n    { \"categoria_id\": \"<id>\", \"urgencia\": \"urgente\", \"detalle\": \"Solo agua potable embotellada\" },\n    { \"categoria_id\": \"<id>\", \"urgencia\": \"media\", \"detalle\": null }\n  ]\n}"
+                },
+                "description": "R3 — Solo responsable. Actualiza ficha pública y lista de necesidades. Refresca `actualizado_en`.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Movimientos",
+          "item": [
+            {
+              "name": "Listar movimientos",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/api/centros/{{centro_id}}/movimientos/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "centros", "{{centro_id}}", "movimientos", ""],
+                  "query": [
+                    { "key": "tipo", "value": "entrada", "description": "entrada | salida", "disabled": true },
+                    { "key": "categoria", "value": "", "disabled": true },
+                    { "key": "page", "value": "1", "disabled": true }
+                  ]
+                },
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "R5, V4 — Libro de movimientos del centro, ordenado por fecha desc.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Registrar movimiento",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tipo\": \"entrada\",\n  \"categoria_id\": \"<id>\",\n  \"cantidad\": 200,\n  \"unidad\": \"litros\",\n  \"contraparte\": \"Familia Rodríguez\",\n  \"nota\": null\n}"
+                },
+                "description": "R4, V2 — Registra una entrada (donante) o salida (ente del Estado). El campo `registrado_por` se toma del JWT.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Corregir movimiento",
+              "request": {
+                "method": "PATCH",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/<mov_id>/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cantidad\": 150,\n  \"nota\": \"Corrección: eran 150, no 200\"\n}"
+                },
+                "description": "R5, V3 — Responsable: cualquier movimiento. Voluntario: solo los propios recientes.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Anular movimiento",
+              "request": {
+                "method": "DELETE",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/<mov_id>/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "R5 — Mismas restricciones de rol que corregir.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Totales derivados",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/totales/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "Totales de entradas y salidas por categoría, etiquetados como 'registrado' (no existencia real — ADR 0007).\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Códigos de voluntario",
+          "item": [
+            {
+              "name": "Listar códigos",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/codigos/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "R6 — Solo responsable. Lista códigos activos y revocados.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Crear código de voluntario",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/codigos/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"etiqueta\": \"Juan – puerta principal\"\n}"
+                },
+                "description": "R6 — Solo responsable. Devuelve el código una sola vez.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Revocar código",
+              "request": {
+                "method": "DELETE",
+                "url": "{{base_url}}/api/centros/{{centro_id}}/codigos/<cod_id>/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "R6 — Solo responsable.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Panel de moderación",
+      "description": "Requiere `Authorization: Bearer {{token_mod}}` (JWT de moderador).",
+      "item": [
+        {
+          "name": "Cola de trabajo",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mod/cola/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mod", "cola", ""],
+              "query": [
+                { "key": "orden", "value": "urgencia", "description": "urgencia | fecha", "disabled": true }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+            "description": "M1 — Centros sin_verificar + reportes pendientes.\n\n⚠️ Endpoint pendiente de implementar."
+          }
+        },
+        {
+          "name": "Centros",
+          "item": [
+            {
+              "name": "Listar todos los centros",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/api/mod/centros/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "mod", "centros", ""],
+                  "query": [
+                    { "key": "estado_verificacion", "value": "sin_verificar", "disabled": true }
+                  ]
+                },
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "Incluye centros ocultos. Mismos filtros que el Directorio + estado_verificacion.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Crear centro (nace verificado)",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/centros/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre\": \"Escuela Bolivariana La Guaira\",\n  \"estado\": \"La Guaira\",\n  \"municipio\": \"Vargas\",\n  \"direccion\": \"Calle Real de Maiquetía s/n\"\n}"
+                },
+                "description": "M7 — Nace verificado directamente; no pasa por la cola.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Ver centro completo",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/mod/centros/{{centro_id}}/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M7 — Todos los campos incluyendo datos internos del responsable.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Editar centro",
+              "request": {
+                "method": "PATCH",
+                "url": "{{base_url}}/api/mod/centros/{{centro_id}}/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre\": \"Centro Corregido\",\n  \"direccion\": \"Nueva dirección\"\n}"
+                },
+                "description": "M7 — Edita cualquier campo de cualquier centro.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Verificar centro",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/centros/{{centro_id}}/verificar/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M2 — Marca el centro como verificado.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Ocultar centro",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/centros/{{centro_id}}/ocultar/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"motivo\": \"Duplicado del centro ID: ...\"\n}"
+                },
+                "description": "M2 — Retira el centro del Directorio.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Reemitir código raíz",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/centros/{{centro_id}}/reemitir-codigo/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M4 — Revoca el código raíz actual y emite uno nuevo. Devuelve el nuevo código una sola vez.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Fusionar duplicados",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/centros/fusionar/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"centro_a\": \"<id>\",\n  \"centro_b\": \"<id>\",\n  \"conservar\": \"<id del que se mantiene>\"\n}"
+                },
+                "description": "M3 — Fusiona dos centros duplicados. El que no se conserva queda oculto.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reportes",
+          "item": [
+            {
+              "name": "Listar reportes",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/api/mod/reportes/",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "mod", "reportes", ""],
+                  "query": [
+                    { "key": "estado", "value": "pendiente", "description": "pendiente | resuelto", "disabled": true }
+                  ]
+                },
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Resolver reporte",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/reportes/<reporte_id>/resolver/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Catálogo",
+          "item": [
+            {
+              "name": "Listar catálogo completo",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/mod/catalogo/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M5 — Incluye categorías inactivas.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Crear categoría",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/catalogo/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre\": \"Agua potable\",\n  \"es_insumo\": true,\n  \"activa\": true\n}"
+                },
+                "description": "M5 — El catálogo es administrable sin deploy.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Editar categoría",
+              "request": {
+                "method": "PATCH",
+                "url": "{{base_url}}/api/mod/catalogo/<cat_id>/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"activa\": false\n}"
+                },
+                "description": "M5 — Edita nombre, es_insumo o activa.\n\n⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Moderadores",
+          "item": [
+            {
+              "name": "Listar moderadores",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/mod/moderadores/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M6 — ⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Crear moderador",
+              "request": {
+                "method": "POST",
+                "url": "{{base_url}}/api/mod/moderadores/",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token_mod}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre\": \"Ana López\",\n  \"email\": \"ana@acopio.ve\",\n  \"password\": \"contraseña-segura\"\n}"
+                },
+                "description": "M6 — ⚠️ Endpoint pendiente de implementar."
+              }
+            },
+            {
+              "name": "Desactivar moderador",
+              "request": {
+                "method": "DELETE",
+                "url": "{{base_url}}/api/mod/moderadores/<mod_id>/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+                "description": "M6 — ⚠️ Endpoint pendiente de implementar."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Métricas (deseable)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/mod/metricas/",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_mod}}" }],
+            "description": "M8 — (Deseable) Centros por estado federal, urgentes activos, movimientos por día.\n\n⚠️ Endpoint pendiente de implementar."
+          }
+        }
+      ]
+    }
+  ]
+}
