@@ -11,7 +11,12 @@ from rest_framework.views import APIView
 from acopio.db import get_db
 from api.auth import (
     buscar_codigo_activo,
+    check_centro,
     crear_codigo_raiz,
+    generar_codigo,
+    hashear_codigo,
+    require_codigo,
+    require_responsable,
     token_codigo,
     token_moderador,
 )
@@ -333,4 +338,262 @@ class MovimientoDetailView(APIView):
         if err:
             return err
         get_db()[MOVIMIENTOS].delete_one({'_id': doc['_id']})
+        return Response(status=204)
+
+
+# ---- Panel de gestión del centro ----
+# Todos los endpoints requieren JWT de código de gestión.
+# El centro_id del token debe coincidir con el centro_pk de la URL (check_centro).
+
+_VENTANA_CORRECCION_SEGUNDOS = 3600  # Voluntarios: 1 hora para corregir sus registros
+
+
+def _build_ficha(centro_doc):
+    """Ensambla la ficha con necesidades enriquecidas con el nombre de categoría."""
+    db = get_db()
+    needs = list(db[NECESIDADES].find({'centro_id': centro_doc['_id']}))
+    cat_ids = [n['categoria_id'] for n in needs]
+    cats = {c['_id']: c['nombre'] for c in db[CATALOGO].find({'_id': {'$in': cat_ids}})}
+    necesidades_out = []
+    for n in needs:
+        nd = format_doc(n)
+        nd['categoria_nombre'] = cats.get(n['categoria_id'], '')
+        necesidades_out.append(nd)
+    return {**CentroSerializer(format_doc(centro_doc)).data, 'necesidades': necesidades_out}
+
+
+def _format_codigo(doc):
+    """Serializa un código de gestión sin exponer el hash."""
+    d = format_doc(doc)
+    d.pop('valor_hash', None)
+    if d.get('creado_por'):
+        d['creado_por'] = str(d['creado_por'])
+    return d
+
+
+class FichaView(APIView):
+    """GET/PATCH /api/centros/{id}/ficha/ — R3"""
+
+    @require_codigo
+    def get(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+        return Response(_build_ficha(doc))
+
+    @require_responsable
+    def patch(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+
+        data = {k: v for k, v in request.data.items() if k not in ('necesidades', 'estado_verificacion')}
+        necesidades_data = request.data.get('necesidades')
+
+        if data:
+            serializer = CentroSerializer(data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            update = dict(serializer.validated_data)
+            update['actualizado_en'] = _now()
+            get_db()[CENTROS_ACOPIO].update_one({'_id': doc['_id']}, {'$set': update})
+        else:
+            get_db()[CENTROS_ACOPIO].update_one({'_id': doc['_id']}, {'$set': {'actualizado_en': _now()}})
+
+        if necesidades_data is not None:
+            db = get_db()
+            db[NECESIDADES].delete_many({'centro_id': doc['_id']})
+            for item in necesidades_data:
+                item_data = {**item, 'centro_id': str(doc['_id'])}
+                s = NecesidadSerializer(data=item_data)
+                s.is_valid(raise_exception=True)
+                db[NECESIDADES].insert_one(dict(s.validated_data))
+
+        updated = get_db()[CENTROS_ACOPIO].find_one({'_id': doc['_id']})
+        return Response(_build_ficha(updated))
+
+
+class GestionMovimientoListView(APIView):
+    """GET/POST /api/centros/{id}/movimientos/ — R4, R5, V2, V4"""
+
+    @require_codigo
+    def get(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+        query = {'centro_id': doc['_id']}
+        if request.query_params.get('tipo'):
+            query['tipo'] = request.query_params['tipo']
+        if request.query_params.get('categoria'):
+            oid = _parse_oid(request.query_params['categoria'])
+            if oid:
+                query['categoria_id'] = oid
+        cursor = get_db()[MOVIMIENTOS].find(query).sort('registrado_en', -1)
+        return Response(MovimientoSerializer([format_doc(d) for d in cursor], many=True).data)
+
+    @require_codigo
+    def post(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+        data = {**request.data, 'centro_id': centro_pk}
+        serializer = MovimientoSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        mov = dict(serializer.validated_data)
+        mov['registrado_en'] = _now()
+        mov['registrado_por'] = request.auth_payload.get('etiqueta') or ''
+        mov['codigo_id'] = ObjectId(request.auth_payload['codigo_id'])
+        result = get_db()[MOVIMIENTOS].insert_one(mov)
+        created = format_doc(get_db()[MOVIMIENTOS].find_one({'_id': result.inserted_id}))
+        return Response(MovimientoSerializer(created).data, status=201)
+
+
+class GestionMovimientoDetailView(APIView):
+    """PATCH/DELETE /api/centros/{id}/movimientos/{mov_id}/ — R5, V3"""
+
+    def _get_mov_autorizado(self, request, centro_pk, mov_pk):
+        """Devuelve (mov_doc, None) o (None, Response de error)."""
+        mov, err = _get_doc(MOVIMIENTOS, mov_pk)
+        if err:
+            return None, err
+        if str(mov['centro_id']) != centro_pk:
+            return None, Response({'detail': 'No encontrado.'}, status=404)
+        if request.auth_payload.get('rol') == 'voluntario':
+            if str(mov.get('codigo_id', '')) != request.auth_payload['codigo_id']:
+                return None, Response({'detail': 'Solo puedes modificar tus propios registros.'}, status=403)
+            antiguedad = (_now() - mov['registrado_en']).total_seconds()
+            if antiguedad > _VENTANA_CORRECCION_SEGUNDOS:
+                return None, Response({'detail': 'Solo puedes modificar registros de la última hora.'}, status=403)
+        return mov, None
+
+    @require_codigo
+    def patch(self, request, centro_pk, mov_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        mov, err = self._get_mov_autorizado(request, centro_pk, mov_pk)
+        if err:
+            return err
+        data = {k: v for k, v in request.data.items() if k not in ('centro_id', 'categoria_id', 'tipo')}
+        serializer = MovimientoSerializer(data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        get_db()[MOVIMIENTOS].update_one({'_id': mov['_id']}, {'$set': dict(serializer.validated_data)})
+        updated = format_doc(get_db()[MOVIMIENTOS].find_one({'_id': mov['_id']}))
+        return Response(MovimientoSerializer(updated).data)
+
+    @require_codigo
+    def delete(self, request, centro_pk, mov_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        mov, err = self._get_mov_autorizado(request, centro_pk, mov_pk)
+        if err:
+            return err
+        get_db()[MOVIMIENTOS].delete_one({'_id': mov['_id']})
+        return Response(status=204)
+
+
+class TotalesView(APIView):
+    """GET /api/centros/{id}/totales/ — totales derivados por categoría (ADR 0007)"""
+
+    @require_codigo
+    def get(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+
+        movimientos = list(get_db()[MOVIMIENTOS].find({'centro_id': doc['_id']}))
+        acumulado = {}
+        for mov in movimientos:
+            cid = str(mov['categoria_id'])
+            if cid not in acumulado:
+                acumulado[cid] = {'categoria_id': cid, 'entradas': 0, 'salidas': 0}
+            if mov.get('cantidad') is not None:
+                if mov['tipo'] == 'entrada':
+                    acumulado[cid]['entradas'] += mov['cantidad']
+                else:
+                    acumulado[cid]['salidas'] += mov['cantidad']
+
+        if acumulado:
+            cat_oids = [ObjectId(cid) for cid in acumulado]
+            cats = {str(c['_id']): c['nombre'] for c in get_db()[CATALOGO].find({'_id': {'$in': cat_oids}})}
+            for cid, t in acumulado.items():
+                t['categoria_nombre'] = cats.get(cid, '')
+
+        return Response({
+            'nota': 'Totales registrados — no representan existencias reales (ADR 0007)',
+            'categorias': list(acumulado.values()),
+        })
+
+
+class CodigoListView(APIView):
+    """GET/POST /api/centros/{id}/codigos/ — R6"""
+
+    @require_responsable
+    def get(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+        codigos = get_db()[CODIGOS_GESTION].find({'centro_id': doc['_id'], 'rol': 'voluntario'})
+        return Response([_format_codigo(c) for c in codigos])
+
+    @require_responsable
+    def post(self, request, centro_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        doc, err = _get_doc(CENTROS_ACOPIO, centro_pk)
+        if err:
+            return err
+        etiqueta = (request.data.get('etiqueta') or '').strip()
+        if not etiqueta:
+            return Response({'detail': 'La etiqueta es requerida.'}, status=400)
+        codigo = generar_codigo()
+        result = get_db()[CODIGOS_GESTION].insert_one({
+            'centro_id': doc['_id'],
+            'valor_hash': hashear_codigo(codigo),
+            'rol': 'voluntario',
+            'etiqueta': etiqueta,
+            'creado_por': ObjectId(request.auth_payload['codigo_id']),
+            'revocado_en': None,
+        })
+        new_doc = get_db()[CODIGOS_GESTION].find_one({'_id': result.inserted_id})
+        return Response({**_format_codigo(new_doc), 'codigo': codigo}, status=201)
+
+
+class CodigoDetailView(APIView):
+    """DELETE /api/centros/{id}/codigos/{cod_id}/ — R6"""
+
+    @require_responsable
+    def delete(self, request, centro_pk, cod_pk):
+        err = check_centro(request, centro_pk)
+        if err:
+            return err
+        cod, err = _get_doc(CODIGOS_GESTION, cod_pk)
+        if err:
+            return err
+        if str(cod['centro_id']) != centro_pk:
+            return Response({'detail': 'No encontrado.'}, status=404)
+        if cod['rol'] != 'voluntario':
+            return Response({'detail': 'No se puede revocar el código raíz desde aquí.'}, status=403)
+        if cod['revocado_en'] is not None:
+            return Response({'detail': 'El código ya está revocado.'}, status=400)
+        get_db()[CODIGOS_GESTION].update_one({'_id': cod['_id']}, {'$set': {'revocado_en': _now()}})
         return Response(status=204)
