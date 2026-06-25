@@ -7,6 +7,9 @@ app_name = 'api'
 urlpatterns = [
     path('health/', views.health, name='health'),
 
+    path('auth/codigo/', views.AuthCodigoView.as_view(), name='auth-codigo'),
+    path('auth/moderador/', views.AuthModeradorView.as_view(), name='auth-moderador'),
+
     path('centros/', views.CentroListView.as_view(), name='centro-list'),
     path('centros/<str:pk>/', views.CentroDetailView.as_view(), name='centro-detail'),
 

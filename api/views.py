@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from django.contrib.auth.hashers import check_password, make_password
 from pymongo.errors import DuplicateKeyError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -8,10 +9,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from acopio.db import get_db
+from api.auth import (
+    buscar_codigo_activo,
+    crear_codigo_raiz,
+    token_codigo,
+    token_moderador,
+)
 from api.models import (
     CATALOGO,
     CENTROS_ACOPIO,
     CODIGOS_GESTION,
+    MODERADORES,
     MOVIMIENTOS,
     NECESIDADES,
 )
@@ -52,6 +60,48 @@ def health(request):
     return Response({'status': 'ok', 'service': 'acopio-backend'})
 
 
+# ---- auth ----
+
+class AuthCodigoView(APIView):
+    """POST /api/auth/codigo/ — canjea un código de gestión por un JWT."""
+
+    def post(self, request):
+        codigo = request.data.get('codigo', '').strip()
+        if not codigo:
+            return Response({'detail': 'El campo codigo es requerido.'}, status=400)
+
+        doc = buscar_codigo_activo(codigo)
+        if not doc:
+            return Response({'detail': 'Código inválido o revocado.'}, status=401)
+
+        return Response({
+            'token': token_codigo(doc),
+            'rol': doc['rol'],
+            'centro_id': str(doc['centro_id']),
+            'etiqueta': doc.get('etiqueta') or '',
+        })
+
+
+class AuthModeradorView(APIView):
+    """POST /api/auth/moderador/ — login de moderador por email + contraseña."""
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        password = request.data.get('password', '')
+        if not email or not password:
+            return Response({'detail': 'email y password son requeridos.'}, status=400)
+
+        doc = get_db()[MODERADORES].find_one({'email': email, 'activo': True})
+        if not doc or not check_password(password, doc['password_hash']):
+            return Response({'detail': 'Credenciales inválidas.'}, status=401)
+
+        return Response({
+            'token': token_moderador(doc),
+            'moderador_id': str(doc['_id']),
+            'nombre': doc.get('nombre') or '',
+        })
+
+
 # ---- centros de acopio ----
 
 class CentroListView(APIView):
@@ -71,10 +121,12 @@ class CentroListView(APIView):
         serializer = CentroSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         doc = dict(serializer.validated_data)
+        doc['estado_verificacion'] = 'sin_verificar'
         doc['actualizado_en'] = _now()
         result = get_db()[CENTROS_ACOPIO].insert_one(doc)
+        codigo_raiz = crear_codigo_raiz(result.inserted_id)
         created = format_doc(get_db()[CENTROS_ACOPIO].find_one({'_id': result.inserted_id}))
-        return Response(CentroSerializer(created).data, status=201)
+        return Response({**CentroSerializer(created).data, 'codigo_raiz': codigo_raiz}, status=201)
 
 
 class CentroDetailView(APIView):
