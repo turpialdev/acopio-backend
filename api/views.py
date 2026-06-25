@@ -24,15 +24,12 @@ from api.models import (
     MODERADORES,
     MOVIMIENTOS,
     NECESIDADES,
-    REPORTES,
 )
 from api.serializers import (
     CategoriaSerializer,
-    CentroPublicoSerializer,
     CentroSerializer,
     MovimientoSerializer,
     NecesidadSerializer,
-    ReporteSerializer,
     format_doc,
 )
 
@@ -119,57 +116,18 @@ class AuthModeradorView(APIView):
 
 # ---- centros de acopio ----
 
-_URGENCIA_ORDEN = {'urgente': 3, 'media': 2, 'leve': 1}
-_URGENCIA_LABEL = {3: 'urgente', 2: 'media', 1: 'leve', 0: None}
-
-
-def _urgencias_maximas(centro_ids):
-    """Devuelve un dict {str(centro_id): urgencia_maxima} para los centros dados."""
-    maximas = {}
-    for n in get_db()[NECESIDADES].find(
-        {'centro_id': {'$in': centro_ids}},
-        {'centro_id': 1, 'urgencia': 1},
-    ):
-        cid = str(n['centro_id'])
-        maximas[cid] = max(maximas.get(cid, 0), _URGENCIA_ORDEN.get(n['urgencia'], 0))
-    return maximas
-
-
 class CentroListView(APIView):
     def get(self, request):
-        # P1: Directorio público — nunca muestra centros ocultos
-        query = {'estado_verificacion': {'$ne': 'oculto'}}
-        for field in ('estado', 'municipio'):
+        query = {}
+        for field in ('estado', 'municipio', 'estado_verificacion'):
             value = request.query_params.get(field)
             if value:
                 query[field] = value
-        texto = request.query_params.get('texto') or request.query_params.get('q')
-        if texto:
-            query['nombre'] = {'$regex': texto, '$options': 'i'}
-
-        # Filtros que pasan por necesidades (categoria y/o urgencia)
-        filtro_n = {}
-        categoria = request.query_params.get('categoria')
-        if categoria:
-            oid = _parse_oid(categoria)
-            if not oid:
-                return Response({'detail': 'categoria ID inválido.'}, status=400)
-            filtro_n['categoria_id'] = oid
-        urgencia_param = request.query_params.get('urgencia')
-        if urgencia_param:
-            filtro_n['urgencia'] = urgencia_param
-        if filtro_n:
-            centro_ids = get_db()[NECESIDADES].distinct('centro_id', filtro_n)
-            query['_id'] = {'$in': centro_ids}
-
-        docs = list(get_db()[CENTROS_ACOPIO].find(query))
-        maximas = _urgencias_maximas([d['_id'] for d in docs]) if docs else {}
-        result = []
-        for doc in docs:
-            d = format_doc(doc)
-            d['urgencia_maxima'] = _URGENCIA_LABEL[maximas.get(d['id'], 0)]
-            result.append(d)
-        return Response(CentroPublicoSerializer(result, many=True).data)
+        q = request.query_params.get('q')
+        if q:
+            query['nombre'] = {'$regex': q, '$options': 'i'}
+        docs = [format_doc(d) for d in get_db()[CENTROS_ACOPIO].find(query)]
+        return Response(CentroSerializer(docs, many=True).data)
 
     def post(self, request):
         serializer = CentroSerializer(data=request.data)
@@ -188,29 +146,7 @@ class CentroDetailView(APIView):
         doc, err = _get_doc(CENTROS_ACOPIO, pk)
         if err:
             return err
-        # P2: centros ocultos no se exponen en el Directorio
-        if doc.get('estado_verificacion') == 'oculto':
-            return Response({'detail': 'No encontrado.'}, status=404)
-        db = get_db()
-        necesidades_raw = list(db[NECESIDADES].find({'centro_id': doc['_id']}))
-        cat_ids = list({n['categoria_id'] for n in necesidades_raw})
-        cats = {c['_id']: c for c in db[CATALOGO].find({'_id': {'$in': cat_ids}})}
-        max_val = 0
-        necesidades = []
-        for n in necesidades_raw:
-            cat = cats.get(n['categoria_id'], {})
-            necesidades.append({
-                'id': str(n['_id']),
-                'categoria_id': str(n['categoria_id']),
-                'categoria_nombre': cat.get('nombre', ''),
-                'urgencia': n['urgencia'],
-                'detalle': n.get('detalle'),
-            })
-            max_val = max(max_val, _URGENCIA_ORDEN.get(n['urgencia'], 0))
-        d = format_doc(doc)
-        d['urgencia_maxima'] = _URGENCIA_LABEL[max_val]
-        d['necesidades'] = necesidades
-        return Response(CentroPublicoSerializer(d).data)
+        return Response(CentroSerializer(format_doc(doc)).data)
 
     def patch(self, request, pk):
         doc, err = _get_doc(CENTROS_ACOPIO, pk)
@@ -234,23 +170,6 @@ class CentroDetailView(APIView):
         db[CODIGOS_GESTION].delete_many({'centro_id': doc['_id']})
         db[CENTROS_ACOPIO].delete_one({'_id': doc['_id']})
         return Response(status=204)
-
-
-class CentroReportarView(APIView):
-    """POST /api/centros/{pk}/reportar/ — P4: reporte ciudadano a cola de moderación."""
-
-    def post(self, request, pk):
-        doc, err = _get_doc(CENTROS_ACOPIO, pk)
-        if err:
-            return err
-        serializer = ReporteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reporte = dict(serializer.validated_data)
-        reporte['centro_id'] = doc['_id']
-        reporte['estado'] = 'pendiente'
-        reporte['reportado_en'] = _now()
-        get_db()[REPORTES].insert_one(reporte)
-        return Response({'detail': 'Reporte recibido. El equipo de moderación lo revisará.'}, status=201)
 
 
 # ---- catálogo de categorías ----

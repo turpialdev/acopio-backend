@@ -7,7 +7,6 @@ from api.models import (
     CATALOGO,
     CENTROS_ACOPIO,
     ESTADOS_VERIFICACION,
-    MOTIVOS_REPORTE,
     TIPOS_MOVIMIENTO,
     URGENCIAS,
 )
@@ -89,41 +88,6 @@ class NecesidadSerializer(serializers.Serializer):
     def validate_categoria_id(self, value):
         oid, _ = _validate_ref(CATALOGO, value, 'Categoría')
         return oid
-
-
-class CentroPublicoSerializer(serializers.Serializer):
-    """Campos visibles en el Directorio público. Excluye datos internos del responsable."""
-    id = serializers.CharField(read_only=True)
-    nombre = serializers.CharField(max_length=200)
-    estado = serializers.CharField(max_length=100)
-    municipio = serializers.CharField(max_length=100)
-    direccion = serializers.CharField(max_length=500)
-    contacto = _optional_text(100)
-    ubicacion_url = serializers.URLField(
-        required=False, allow_blank=True, allow_null=True, default=None
-    )
-    lat = serializers.FloatField(required=False, allow_null=True, default=None)
-    lng = serializers.FloatField(required=False, allow_null=True, default=None)
-    vialidad = _optional_text(300)
-    estado_verificacion = serializers.ChoiceField(
-        choices=ESTADOS_VERIFICACION, read_only=True
-    )
-    actualizado_en = serializers.DateTimeField(read_only=True)
-    urgencia_maxima = serializers.CharField(allow_null=True, read_only=True, default=None)
-    necesidades = serializers.ListField(
-        child=serializers.DictField(), read_only=True, default=list
-    )
-
-
-class ReporteSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
-    centro_id = serializers.CharField(read_only=True)
-    motivo = serializers.ChoiceField(
-        choices=MOTIVOS_REPORTE, required=False, allow_null=True, default=None
-    )
-    detalle = _optional_text(1000)
-    reportado_en = serializers.DateTimeField(read_only=True)
-    estado = serializers.ChoiceField(choices=('pendiente', 'resuelto'), read_only=True)
 
 
 class MovimientoSerializer(serializers.Serializer):
