@@ -12,12 +12,18 @@ from api.models import (
     CATALOGO,
     CENTROS_ACOPIO,
     CODIGOS_GESTION,
+    CONTACTOS_EMERGENCIA,
     MODERADORES,
     MOVIMIENTOS,
     NECESIDADES,
     REPORTES,
 )
-from api.serializers import CategoriaSerializer, CentroSerializer, format_doc
+from api.serializers import (
+    CategoriaSerializer,
+    CentroSerializer,
+    ContactoEmergenciaSerializer,
+    format_doc,
+)
 
 
 def _now():
@@ -339,6 +345,60 @@ class ModeradorDetailView(APIView):
         if str(doc['_id']) == request.auth_payload.get('moderador_id'):
             return Response({'detail': 'No puedes desactivar tu propia cuenta.'}, status=400)
         get_db()[MODERADORES].update_one({'_id': doc['_id']}, {'$set': {'activo': False}})
+        return Response(status=204)
+
+
+# ---- P5: Contactos de emergencia ----
+
+class ModContactoEmergenciaListView(APIView):
+    """GET/POST /api/mod/contactos-emergencia/"""
+
+    @require_moderador
+    def get(self, request):
+        query = {}
+        zona = request.query_params.get('zona')
+        if zona:
+            query['zona'] = {'$regex': zona, '$options': 'i'}
+        tipo = request.query_params.get('tipo')
+        if tipo:
+            query['tipo'] = tipo
+        docs = [
+            format_doc(d)
+            for d in get_db()[CONTACTOS_EMERGENCIA].find(query).sort('nombre', 1)
+        ]
+        return Response(ContactoEmergenciaSerializer(docs, many=True).data)
+
+    @require_moderador
+    def post(self, request):
+        serializer = ContactoEmergenciaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = get_db()[CONTACTOS_EMERGENCIA].insert_one(dict(serializer.validated_data))
+        doc = format_doc(get_db()[CONTACTOS_EMERGENCIA].find_one({'_id': result.inserted_id}))
+        return Response(ContactoEmergenciaSerializer(doc).data, status=201)
+
+
+class ModContactoEmergenciaDetailView(APIView):
+    """PATCH/DELETE /api/mod/contactos-emergencia/{id}/"""
+
+    @require_moderador
+    def patch(self, request, pk):
+        doc, err = _get_doc(CONTACTOS_EMERGENCIA, pk)
+        if err:
+            return err
+        serializer = ContactoEmergenciaSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        get_db()[CONTACTOS_EMERGENCIA].update_one(
+            {'_id': doc['_id']}, {'$set': dict(serializer.validated_data)}
+        )
+        updated = format_doc(get_db()[CONTACTOS_EMERGENCIA].find_one({'_id': doc['_id']}))
+        return Response(ContactoEmergenciaSerializer(updated).data)
+
+    @require_moderador
+    def delete(self, request, pk):
+        doc, err = _get_doc(CONTACTOS_EMERGENCIA, pk)
+        if err:
+            return err
+        get_db()[CONTACTOS_EMERGENCIA].delete_one({'_id': doc['_id']})
         return Response(status=204)
 
 

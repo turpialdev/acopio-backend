@@ -126,6 +126,20 @@ class ReporteSerializer(serializers.Serializer):
     estado = serializers.ChoiceField(choices=('pendiente', 'resuelto'), read_only=True)
 
 
+class ContactoEmergenciaSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    nombre = serializers.CharField(max_length=200)
+    tipo = serializers.CharField(max_length=100)
+    zona = serializers.CharField(max_length=200)
+    telefonos = serializers.ListField(
+        child=serializers.CharField(max_length=50),
+        min_length=1,
+    )
+    whatsapp_url = serializers.URLField(
+        required=False, allow_blank=True, allow_null=True, default=None
+    )
+
+
 class MovimientoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     centro_id = serializers.CharField()

@@ -24,4 +24,7 @@ urlpatterns = [
     path('moderadores/<str:pk>/', views.ModeradorDetailView.as_view(), name='mod-moderador-detail'),
 
     path('metricas/', views.MetricasView.as_view(), name='mod-metricas'),
+
+    path('contactos-emergencia/', views.ModContactoEmergenciaListView.as_view(), name='mod-contacto-list'),
+    path('contactos-emergencia/<str:pk>/', views.ModContactoEmergenciaDetailView.as_view(), name='mod-contacto-detail'),
 ]
