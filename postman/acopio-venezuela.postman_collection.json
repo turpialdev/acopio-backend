@@ -8,7 +8,8 @@
     { "key": "base_url", "value": "http://localhost:8000" },
     { "key": "token", "value": "" },
     { "key": "token_mod", "value": "" },
-    { "key": "centro_id", "value": "" }
+    { "key": "centro_id", "value": "" },
+    { "key": "movimiento_id", "value": "" }
   ],
   "item": [
     {
@@ -230,24 +231,34 @@
               "request": {
                 "method": "GET",
                 "url": {
-                  "raw": "{{base_url}}/api/centros/{{centro_id}}/movimientos/",
+                  "raw": "{{base_url}}/api/movimientos/",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "centros", "{{centro_id}}", "movimientos", ""],
+                  "path": ["api", "movimientos", ""],
                   "query": [
-                    { "key": "tipo", "value": "entrada", "description": "entrada | salida", "disabled": true },
-                    { "key": "categoria", "value": "", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
+                    { "key": "tipo", "value": "entrada", "description": "entrada | salida", "disabled": true }
                   ]
                 },
                 "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-                "description": "R5, V4 — Libro de movimientos del centro, ordenado por fecha desc.\n\n⚠️ Endpoint pendiente de implementar."
+                "description": "V4, R5 — Libro de movimientos del centro, ordenado por fecha desc. El centro se toma del JWT — no hace falta pasarlo como parámetro."
               }
             },
             {
               "name": "Registrar movimiento",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "    pm.collectionVariables.set('movimiento_id', pm.response.json().id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "POST",
-                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/",
+                "url": "{{base_url}}/api/movimientos/",
                 "header": [
                   { "key": "Authorization", "value": "Bearer {{token}}" },
                   { "key": "Content-Type", "value": "application/json" }
@@ -256,14 +267,23 @@
                   "mode": "raw",
                   "raw": "{\n  \"tipo\": \"entrada\",\n  \"categoria_id\": \"<id>\",\n  \"cantidad\": 200,\n  \"unidad\": \"litros\",\n  \"contraparte\": \"Familia Rodríguez\",\n  \"nota\": null\n}"
                 },
-                "description": "R4, V2 — Registra una entrada (donante) o salida (ente del Estado). El campo `registrado_por` se toma del JWT.\n\n⚠️ Endpoint pendiente de implementar."
+                "description": "V2, R4 — Registra una entrada (donante) o salida (ente del Estado). `centro_id` y `registrado_por` se inyectan del JWT; no hace falta incluirlos. El script de Tests guarda el ID en `{{movimiento_id}}`."
+              }
+            },
+            {
+              "name": "Ver movimiento",
+              "request": {
+                "method": "GET",
+                "url": "{{base_url}}/api/movimientos/{{movimiento_id}}/",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "description": "V4 — Devuelve un movimiento del centro del JWT. Retorna 403 si pertenece a otro centro."
               }
             },
             {
               "name": "Corregir movimiento",
               "request": {
                 "method": "PATCH",
-                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/<mov_id>/",
+                "url": "{{base_url}}/api/movimientos/{{movimiento_id}}/",
                 "header": [
                   { "key": "Authorization", "value": "Bearer {{token}}" },
                   { "key": "Content-Type", "value": "application/json" }
@@ -272,16 +292,16 @@
                   "mode": "raw",
                   "raw": "{\n  \"cantidad\": 150,\n  \"nota\": \"Corrección: eran 150, no 200\"\n}"
                 },
-                "description": "R5, V3 — Responsable: cualquier movimiento. Voluntario: solo los propios recientes.\n\n⚠️ Endpoint pendiente de implementar."
+                "description": "V3, R5 — Responsable: puede corregir cualquier movimiento de su centro. Voluntario: solo los propios y solo dentro de los últimos 30 minutos. `centro_id` y `categoria_id` son inmutables."
               }
             },
             {
               "name": "Anular movimiento",
               "request": {
                 "method": "DELETE",
-                "url": "{{base_url}}/api/centros/{{centro_id}}/movimientos/<mov_id>/",
+                "url": "{{base_url}}/api/movimientos/{{movimiento_id}}/",
                 "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-                "description": "R5 — Mismas restricciones de rol que corregir.\n\n⚠️ Endpoint pendiente de implementar."
+                "description": "R5 — Solo responsable. El voluntario recibe 403."
               }
             },
             {

@@ -1,5 +1,6 @@
 from urllib.parse import quote_plus
 
+import certifi
 from django.conf import settings
 from pymongo import MongoClient
 
@@ -23,5 +24,8 @@ def _encode_credentials(uri: str) -> str:
 def get_db():
     global _client
     if _client is None:
-        _client = MongoClient(_encode_credentials(settings.MONGODB_URI))
+        _client = MongoClient(
+                _encode_credentials(settings.MONGODB_URI),
+                tlsCAFile=certifi.where(),
+            )
     return _client[settings.MONGODB_DB]
