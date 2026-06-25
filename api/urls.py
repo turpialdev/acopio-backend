@@ -21,4 +21,12 @@ urlpatterns = [
 
     path('movimientos/', views.MovimientoListView.as_view(), name='movimiento-list'),
     path('movimientos/<str:pk>/', views.MovimientoDetailView.as_view(), name='movimiento-detail'),
+
+    # Panel de gestión del centro (JWT de código de gestión)
+    path('centros/<str:centro_pk>/ficha/', views.FichaView.as_view(), name='ficha'),
+    path('centros/<str:centro_pk>/movimientos/', views.GestionMovimientoListView.as_view(), name='gestion-movimiento-list'),
+    path('centros/<str:centro_pk>/movimientos/<str:mov_pk>/', views.GestionMovimientoDetailView.as_view(), name='gestion-movimiento-detail'),
+    path('centros/<str:centro_pk>/totales/', views.TotalesView.as_view(), name='totales'),
+    path('centros/<str:centro_pk>/codigos/', views.CodigoListView.as_view(), name='codigo-list'),
+    path('centros/<str:centro_pk>/codigos/<str:cod_pk>/', views.CodigoDetailView.as_view(), name='codigo-detail'),
 ]
