@@ -8,6 +8,7 @@ MOVIMIENTOS = 'movimientos'
 CODIGOS_GESTION = 'codigos_gestion'
 MODERADORES = 'moderadores'
 REPORTES = 'reportes'
+CONTACTOS_EMERGENCIA = 'contactos_emergencia'
 
 # Valores controlados
 ESTADOS_VERIFICACION = ('sin_verificar', 'verificado', 'oculto')
@@ -59,3 +60,7 @@ def ensure_indexes():
     db[REPORTES].create_index('estado')
     db[REPORTES].create_index('reportado_en')
     db[REPORTES].create_index('resuelto')
+
+    # Contactos de emergencia — directorio público (P5)
+    db[CONTACTOS_EMERGENCIA].create_index('zona')
+    db[CONTACTOS_EMERGENCIA].create_index('tipo')

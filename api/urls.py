@@ -12,7 +12,10 @@ urlpatterns = [
 
     path('centros/', views.CentroListView.as_view(), name='centro-list'),
     path('centros/<str:pk>/reportar/', views.CentroReportarView.as_view(), name='centro-reportar'),
+    path('centros/<str:pk>/sugerencias/', views.SugerenciasView.as_view(), name='centro-sugerencias'),
     path('centros/<str:pk>/', views.CentroDetailView.as_view(), name='centro-detail'),
+
+    path('contactos-emergencia/', views.ContactoEmergenciaListView.as_view(), name='contacto-emergencia-list'),
 
     path('catalogo/', views.CategoriaListView.as_view(), name='categoria-list'),
     path('catalogo/<str:pk>/', views.CategoriaDetailView.as_view(), name='categoria-detail'),

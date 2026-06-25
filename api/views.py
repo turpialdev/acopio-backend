@@ -21,6 +21,7 @@ from api.models import (
     CATALOGO,
     CENTROS_ACOPIO,
     CODIGOS_GESTION,
+    CONTACTOS_EMERGENCIA,
     MODERADORES,
     MOVIMIENTOS,
     NECESIDADES,
@@ -30,6 +31,7 @@ from api.serializers import (
     CategoriaSerializer,
     CentroPublicoSerializer,
     CentroSerializer,
+    ContactoEmergenciaSerializer,
     MovimientoSerializer,
     NecesidadSerializer,
     ReporteSerializer,
@@ -453,3 +455,92 @@ class MovimientoDetailView(APIView):
             return err
         get_db()[MOVIMIENTOS].delete_one({'_id': doc['_id']})
         return Response(status=204)
+
+
+# ---- contactos de emergencia (P5) ----
+
+class ContactoEmergenciaListView(APIView):
+    """GET /api/contactos-emergencia/ — directorio público, sin auth."""
+
+    def get(self, request):
+        query = {}
+        zona = request.query_params.get('zona')
+        if zona:
+            query['zona'] = {'$regex': zona, '$options': 'i'}
+        tipo = request.query_params.get('tipo')
+        if tipo:
+            query['tipo'] = tipo
+        docs = [
+            format_doc(d)
+            for d in get_db()[CONTACTOS_EMERGENCIA].find(query).sort('nombre', 1)
+        ]
+        return Response(ContactoEmergenciaSerializer(docs, many=True).data)
+
+
+# ---- sugerencias de inventario (R8) ----
+
+class SugerenciasView(APIView):
+    """GET /api/centros/{pk}/sugerencias/ — señales del inventario para el responsable.
+
+    Por cada categoría donde hoy salió más de lo que entró, devuelve una sugerencia
+    para revisar la urgencia en la ficha. El sistema sugiere; el humano publica (ADR 0005).
+    """
+
+    @require_codigo
+    def get(self, request, pk):
+        if request.auth_payload.get('centro_id') != pk:
+            return Response({'detail': 'No tienes acceso a este centro.'}, status=403)
+
+        centro_oid = _parse_oid(pk)
+        if not centro_oid:
+            return Response({'detail': 'ID inválido.'}, status=400)
+
+        hoy = _now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cursor = get_db()[MOVIMIENTOS].find({
+            'centro_id': centro_oid,
+            'registrado_en': {'$gte': hoy},
+        })
+
+        totales = {}
+        for mov in cursor:
+            cid = mov['categoria_id']
+            if cid not in totales:
+                totales[cid] = {'entradas': 0.0, 'salidas': 0.0}
+            cant = mov.get('cantidad') or 0.0
+            if mov['tipo'] == 'entrada':
+                totales[cid]['entradas'] += cant
+            else:
+                totales[cid]['salidas'] += cant
+
+        if not totales:
+            return Response({'sugerencias': []})
+
+        cat_ids = list(totales.keys())
+        cats = {c['_id']: c for c in get_db()[CATALOGO].find({'_id': {'$in': cat_ids}})}
+        necesidades = {
+            n['categoria_id']: n
+            for n in get_db()[NECESIDADES].find({
+                'centro_id': centro_oid,
+                'categoria_id': {'$in': cat_ids},
+            })
+        }
+
+        sugerencias = []
+        for cid, t in totales.items():
+            if t['salidas'] > t['entradas']:
+                cat = cats.get(cid, {})
+                nec = necesidades.get(cid)
+                nombre_cat = cat.get('nombre', 'insumo')
+                sugerencias.append({
+                    'categoria_id': str(cid),
+                    'categoria_nombre': nombre_cat,
+                    'entradas_hoy': t['entradas'],
+                    'salidas_hoy': t['salidas'],
+                    'urgencia_actual': nec['urgencia'] if nec else None,
+                    'mensaje': (
+                        f"Hoy salió más {nombre_cat} del que entró. "
+                        "Considera revisar la urgencia en la ficha."
+                    ),
+                })
+
+        return Response({'sugerencias': sugerencias})
