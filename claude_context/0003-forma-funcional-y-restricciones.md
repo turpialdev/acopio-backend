@@ -31,6 +31,15 @@ Restricciones no funcionales (vinculantes, sea cual sea el stack):
 ## Consequences
 
 - El equipo tiene libertad de stack, pero queda atado a un presupuesto de
-  rendimiento explícito para el directorio público. Conviene fijar una métrica
-  concreta (p. ej. peso de la primera carga y tiempo a primer contenido en 3G)
-  como criterio de aceptación.
+  rendimiento explícito para el Directorio público, medido **en red degradada
+  (perfil Slow 4G/3G) y un Android de gama media-baja**, no en el equipo del
+  desarrollador (ajustable tras una prueba con contenido real):
+  - Peso de la primera carga (HTML+CSS+JS+fuentes críticos, comprimido): **≤ ~170 KB**.
+  - **First Contentful Paint ≤ ~1,8 s**; primeros centros visibles (LCP) **≤ ~2,5 s**.
+  - **El Directorio se ve y se puede leer/buscar aunque el JS no cargue o falle.**
+    Es el criterio que más pesa en red mala: el contenido no puede depender de que
+    llegue un bundle completo.
+  - Sin imágenes pesadas en el Directorio (las fichas no necesitan fotos en el MVP).
+- Un presupuesto estricto limita lujos (frameworks pesados, fuentes personalizadas,
+  animaciones). Es la disciplina que el contexto exige; el stack se elige pagando
+  ese presupuesto.
