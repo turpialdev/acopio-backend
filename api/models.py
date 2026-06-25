@@ -15,6 +15,8 @@ CARGOS_RESPONSABLE = ('propietario', 'socio', 'director', 'gerente')
 URGENCIAS = ('urgente', 'media', 'leve')
 TIPOS_MOVIMIENTO = ('entrada', 'salida')
 ROLES_CODIGO = ('responsable', 'voluntario')
+MOTIVOS_REPORTE = ('duplicado', 'falso', 'peligroso', 'otro')
+ESTADOS_REPORTE = ('pendiente', 'resuelto')
 
 
 def ensure_indexes():
@@ -52,6 +54,8 @@ def ensure_indexes():
     # Moderadores — cuentas reales
     db[MODERADORES].create_index('email', unique=True)
 
-    # Reportes ciudadanos
+    # Reportes ciudadanos — cola de moderación (ADR 0004)
     db[REPORTES].create_index('centro_id')
+    db[REPORTES].create_index('estado')
+    db[REPORTES].create_index('reportado_en')
     db[REPORTES].create_index('resuelto')

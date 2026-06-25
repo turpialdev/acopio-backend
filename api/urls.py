@@ -11,6 +11,7 @@ urlpatterns = [
     path('auth/moderador/', views.AuthModeradorView.as_view(), name='auth-moderador'),
 
     path('centros/', views.CentroListView.as_view(), name='centro-list'),
+    path('centros/<str:pk>/reportar/', views.CentroReportarView.as_view(), name='centro-reportar'),
     path('centros/<str:pk>/', views.CentroDetailView.as_view(), name='centro-detail'),
 
     path('catalogo/', views.CategoriaListView.as_view(), name='categoria-list'),
