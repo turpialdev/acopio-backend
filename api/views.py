@@ -137,7 +137,7 @@ def _urgencias_maximas(centro_ids):
 
 class CentroListView(APIView):
     def get(self, request):
-        # P1: Directorio público — nunca muestra centros ocultos
+        # El directorio público nunca muestra centros ocultos (ADR 0004)
         query = {'estado_verificacion': {'$ne': 'oculto'}}
         for field in ('estado', 'municipio'):
             value = request.query_params.get(field)

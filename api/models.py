@@ -58,3 +58,4 @@ def ensure_indexes():
     db[REPORTES].create_index('centro_id')
     db[REPORTES].create_index('estado')
     db[REPORTES].create_index('reportado_en')
+    db[REPORTES].create_index('resuelto')
