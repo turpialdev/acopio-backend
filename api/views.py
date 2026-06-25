@@ -382,6 +382,12 @@ class MovimientoListView(APIView):
         tipo = request.query_params.get('tipo')
         if tipo:
             query['tipo'] = tipo
+        categoria_id = request.query_params.get('categoria_id')
+        if categoria_id:
+            oid = _parse_oid(categoria_id)
+            if not oid:
+                return Response({'detail': 'categoria_id inválido.'}, status=400)
+            query['categoria_id'] = oid
         cursor = get_db()[MOVIMIENTOS].find(query).sort('registrado_en', -1)
         docs = [format_doc(d) for d in cursor]
         return Response(MovimientoSerializer(docs, many=True).data)
