@@ -25,7 +25,7 @@ def get_db():
     global _client
     if _client is None:
         _client = MongoClient(
-            _encode_credentials(settings.MONGODB_URI),
-            tlsCAFile=certifi.where(),
-        )
+                _encode_credentials(settings.MONGODB_URI),
+                tlsCAFile=certifi.where(),
+            )
     return _client[settings.MONGODB_DB]
