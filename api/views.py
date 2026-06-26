@@ -681,7 +681,7 @@ class CodigoListView(APIView):
         etiqueta = (request.data.get('etiqueta') or '').strip()
         if not etiqueta:
             return Response({'detail': 'La etiqueta es requerida.'}, status=400)
-        codigo = generar_codigo()
+        codigo = generar_codigo('VL')
         result = get_db()[CODIGOS_GESTION].insert_one({
             'centro_id': doc['_id'],
             'valor_hash': hashear_codigo(codigo),

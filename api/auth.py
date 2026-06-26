@@ -13,13 +13,18 @@ from api.models import CODIGOS_GESTION
 
 # ---- Utilidades de código ----
 
-def generar_codigo() -> str:
-    """Código opaco y aleatorio; seguro para dictar por voz o SMS."""
-    return secrets.token_urlsafe(32)
+def generar_codigo(prefijo: str) -> str:
+    """Genera un código legible único: {prefijo} + 8 dígitos (ej. CE12345678, VO12345678).
+    Reintenta si el código ya existe en la colección (activo o revocado)."""
+    db = get_db()
+    while True:
+        numero = str(secrets.randbelow(100_000_000)).zfill(8)
+        valor = f"{prefijo}{numero}"
+        if not db[CODIGOS_GESTION].find_one({'valor_hash': hashear_codigo(valor)}):
+            return valor
 
 
 def hashear_codigo(valor: str) -> str:
-    """SHA-256 del código. Los códigos son strings aleatorios de alta entropía."""
     return hashlib.sha256(valor.encode()).hexdigest()
 
 
@@ -32,8 +37,8 @@ def buscar_codigo_activo(valor: str) -> dict | None:
 
 
 def crear_codigo_raiz(centro_id) -> str:
-    """Genera y persiste el código raíz al registrar un centro. Devuelve el texto plano una sola vez."""
-    codigo = generar_codigo()
+    """Genera y persiste el código raíz (prefijo CE) al registrar un centro. Devuelve el texto plano una sola vez."""
+    codigo = generar_codigo('CE')
     get_db()[CODIGOS_GESTION].insert_one({
         'centro_id': centro_id,
         'valor_hash': hashear_codigo(codigo),
