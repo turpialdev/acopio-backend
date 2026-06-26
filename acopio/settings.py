@@ -75,14 +75,9 @@ REST_FRAMEWORK = {
     'UNAUTHENTICATED_USER': None,
 }
 
-CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get(
-        'DJANGO_CORS_ALLOWED_ORIGINS',
-        'http://localhost:5173,http://127.0.0.1:5173',
-    ).split(',')
-    if o.strip()
-]
+# Se permite cualquier origen: la API es pública y se autentica con JWT en el
+# header Authorization (no usa cookies), así que no requiere CORS con credenciales.
+CORS_ALLOW_ALL_ORIGINS = True
 
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017')
 MONGODB_DB = os.environ.get('MONGODB_DB', 'acopio')
