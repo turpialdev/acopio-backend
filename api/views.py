@@ -217,8 +217,16 @@ class CentroListView(APIView):
         doc['estado_verificacion'] = 'sin_verificar'
         doc['actualizado_en'] = _now()
         result = get_db()[CENTROS_ACOPIO].insert_one(doc)
-        codigo_raiz = crear_codigo_raiz(result.inserted_id)
-        created = format_doc(get_db()[CENTROS_ACOPIO].find_one({'_id': result.inserted_id}))
+        centro_id = result.inserted_id
+
+        necesidades_input = request.data.get('necesidades') or []
+        for item in necesidades_input:
+            s = NecesidadSerializer(data={**item, 'centro_id': str(centro_id)})
+            s.is_valid(raise_exception=True)
+            get_db()[NECESIDADES].insert_one(dict(s.validated_data))
+
+        codigo_raiz = crear_codigo_raiz(centro_id)
+        created = format_doc(get_db()[CENTROS_ACOPIO].find_one({'_id': centro_id}))
         return Response({**CentroSerializer(created).data, 'codigo_raiz': codigo_raiz}, status=201)
 
 
