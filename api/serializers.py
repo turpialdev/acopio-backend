@@ -114,6 +114,7 @@ class CentroPublicoSerializer(serializers.Serializer):
         child=serializers.DictField(), read_only=True, default=list
     )
     nombre_responsable = _optional_text(200)
+    telefono_responsable = _optional_text(50)
     cargo_responsable = serializers.ChoiceField(
         choices=CARGOS_RESPONSABLE, required=False, allow_null=True, default=None
     )
