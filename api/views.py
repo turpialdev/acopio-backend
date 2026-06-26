@@ -174,6 +174,8 @@ class CentroListView(APIView):
             d = format_doc(doc)
             d['urgencia_maxima'] = _URGENCIA_LABEL[maximas.get(d['id'], 0)]
             result.append(d)
+        _orden_verificacion = {'verificado': 0, 'sin_verificar': 1}
+        result.sort(key=lambda d: _orden_verificacion.get(d.get('estado_verificacion', ''), 99))
         return Response(CentroPublicoSerializer(result, many=True).data)
 
     def post(self, request):
