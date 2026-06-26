@@ -357,10 +357,10 @@ Authorization: Bearer {token}
     {
       "categoria_id": "...",
       "categoria_nombre": "Agua Potable",
-      "entradas_hoy": 20,
-      "salidas_hoy": 45,
+      "entradas_total": 200,
+      "salidas_total": 450,
       "urgencia_actual": "media",
-      "mensaje": "Hoy salió más Agua Potable del que entró. Considera revisar la urgencia en la ficha."
+      "mensaje": "El total de salidas de Agua Potable supera el total de entradas. Considera revisar la urgencia en la ficha."
     }
   ]
 }

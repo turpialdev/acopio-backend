@@ -740,8 +740,9 @@ class ContactoEmergenciaListView(APIView):
 class SugerenciasView(APIView):
     """GET /api/centros/{pk}/sugerencias/ — señales del inventario para el responsable.
 
-    Por cada categoría donde hoy salió más de lo que entró, devuelve una sugerencia
-    para revisar la urgencia en la ficha. El sistema sugiere; el humano publica (ADR 0005).
+    Por cada categoría donde el total acumulado de salidas supera el de entradas,
+    devuelve una sugerencia para revisar la urgencia en la ficha.
+    El sistema sugiere; el humano publica (ADR 0005).
     """
 
     @require_codigo
@@ -753,11 +754,7 @@ class SugerenciasView(APIView):
         if not centro_oid:
             return Response({'detail': 'ID inválido.'}, status=400)
 
-        hoy = _now().replace(hour=0, minute=0, second=0, microsecond=0)
-        cursor = get_db()[MOVIMIENTOS].find({
-            'centro_id': centro_oid,
-            'registrado_en': {'$gte': hoy},
-        })
+        cursor = get_db()[MOVIMIENTOS].find({'centro_id': centro_oid})
 
         totales = {}
         for mov in cursor:
@@ -792,11 +789,11 @@ class SugerenciasView(APIView):
                 sugerencias.append({
                     'categoria_id': str(cid),
                     'categoria_nombre': nombre_cat,
-                    'entradas_hoy': t['entradas'],
-                    'salidas_hoy': t['salidas'],
+                    'entradas_total': t['entradas'],
+                    'salidas_total': t['salidas'],
                     'urgencia_actual': nec['urgencia'] if nec else None,
                     'mensaje': (
-                        f"Hoy salió más {nombre_cat} del que entró. "
+                        f"El total de salidas de {nombre_cat} supera el total de entradas. "
                         "Considera revisar la urgencia en la ficha."
                     ),
                 })
