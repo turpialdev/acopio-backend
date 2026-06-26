@@ -15,6 +15,14 @@ urlpatterns = [
     path('centros/<str:pk>/sugerencias/', views.SugerenciasView.as_view(), name='centro-sugerencias'),
     path('centros/<str:pk>/', views.CentroDetailView.as_view(), name='centro-detail'),
 
+    # Panel de gestión del centro (JWT de código de gestión)
+    path('centros/<str:centro_pk>/ficha/', views.FichaView.as_view(), name='ficha'),
+    path('centros/<str:centro_pk>/movimientos/', views.GestionMovimientoListView.as_view(), name='gestion-movimiento-list'),
+    path('centros/<str:centro_pk>/movimientos/<str:mov_pk>/', views.GestionMovimientoDetailView.as_view(), name='gestion-movimiento-detail'),
+    path('centros/<str:centro_pk>/totales/', views.TotalesView.as_view(), name='totales'),
+    path('centros/<str:centro_pk>/codigos/', views.CodigoListView.as_view(), name='codigo-list'),
+    path('centros/<str:centro_pk>/codigos/<str:cod_pk>/', views.CodigoDetailView.as_view(), name='codigo-detail'),
+
     path('contactos-emergencia/', views.ContactoEmergenciaListView.as_view(), name='contacto-emergencia-list'),
 
     path('catalogo/', views.CategoriaListView.as_view(), name='categoria-list'),
