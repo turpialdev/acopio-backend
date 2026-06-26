@@ -92,7 +92,7 @@ class NecesidadSerializer(serializers.Serializer):
 
 
 class CentroPublicoSerializer(serializers.Serializer):
-    """Campos visibles en el Directorio público. Excluye datos internos del responsable."""
+    """Campos visibles en el Directorio público."""
     id = serializers.CharField(read_only=True)
     nombre = serializers.CharField(max_length=200)
     estado = serializers.CharField(max_length=100)
@@ -112,6 +112,10 @@ class CentroPublicoSerializer(serializers.Serializer):
     urgencia_maxima = serializers.CharField(allow_null=True, read_only=True, default=None)
     necesidades = serializers.ListField(
         child=serializers.DictField(), read_only=True, default=list
+    )
+    nombre_responsable = _optional_text(200)
+    cargo_responsable = serializers.ChoiceField(
+        choices=CARGOS_RESPONSABLE, required=False, allow_null=True, default=None
     )
 
 
