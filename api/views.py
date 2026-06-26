@@ -150,7 +150,14 @@ class CentroListView(APIView):
                 query[field] = value
         texto = request.query_params.get('texto') or request.query_params.get('q')
         if texto:
-            query['nombre'] = {'$regex': texto, '$options': 'i'}
+            regex = {'$regex': texto, '$options': 'i'}
+            query['$or'] = [
+                {'nombre': regex},
+                {'direccion': regex},
+                {'estado': regex},
+                {'municipio': regex},
+                {'nombre_responsable': regex},
+            ]
 
         # Filtros que pasan por necesidades (categoria y/o urgencia)
         filtro_n = {}
