@@ -168,12 +168,37 @@ class CentroListView(APIView):
             query['_id'] = {'$in': centro_ids}
 
         docs = list(get_db()[CENTROS_ACOPIO].find(query))
-        maximas = _urgencias_maximas([d['_id'] for d in docs]) if docs else {}
+        if not docs:
+            return Response([])
+
+        centro_ids = [d['_id'] for d in docs]
+        maximas = _urgencias_maximas(centro_ids)
+
+        # Join necesidades en batch (una sola query)
+        db = get_db()
+        necs_raw = list(db[NECESIDADES].find({'centro_id': {'$in': centro_ids}}))
+        cat_ids = list({n['categoria_id'] for n in necs_raw})
+        cats = {c['_id']: c for c in db[CATALOGO].find({'_id': {'$in': cat_ids}})} if cat_ids else {}
+
+        necs_por_centro: dict = {}
+        for n in necs_raw:
+            cid = n['centro_id']
+            cat = cats.get(n['categoria_id'], {})
+            necs_por_centro.setdefault(cid, []).append({
+                'id': str(n['_id']),
+                'categoria_id': str(n['categoria_id']),
+                'categoria_nombre': cat.get('nombre', ''),
+                'urgencia': n['urgencia'],
+                'detalle': n.get('detalle'),
+            })
+
         result = []
         for doc in docs:
             d = format_doc(doc)
             d['urgencia_maxima'] = _URGENCIA_LABEL[maximas.get(d['id'], 0)]
+            d['necesidades'] = necs_por_centro.get(doc['_id'], [])
             result.append(d)
+
         _orden_verificacion = {'verificado': 0, 'sin_verificar': 1}
         result.sort(key=lambda d: _orden_verificacion.get(d.get('estado_verificacion', ''), 99))
         return Response(CentroPublicoSerializer(result, many=True).data)
