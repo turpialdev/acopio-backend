@@ -56,6 +56,7 @@ class CentroSerializer(serializers.Serializer):
     lat = serializers.FloatField(required=False, allow_null=True, default=None)
     lng = serializers.FloatField(required=False, allow_null=True, default=None)
     vialidad = _optional_text(300)
+    horario = _optional_text(300)
     estado_verificacion = serializers.ChoiceField(
         choices=ESTADOS_VERIFICACION, default='sin_verificar'
     )
@@ -105,6 +106,7 @@ class CentroPublicoSerializer(serializers.Serializer):
     lat = serializers.FloatField(required=False, allow_null=True, default=None)
     lng = serializers.FloatField(required=False, allow_null=True, default=None)
     vialidad = _optional_text(300)
+    horario = _optional_text(300)
     estado_verificacion = serializers.ChoiceField(
         choices=ESTADOS_VERIFICACION, read_only=True
     )
